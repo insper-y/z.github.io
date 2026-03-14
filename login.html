@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>订单收支统计</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,"Microsoft YaHei"}
+:root{--bg:#f4f4f6;--card:#fff;--text:#333;--border:#ddd;--pri:#409eff;--success:#22c55e;--danger:#ef4444}
+.dark{--bg:#1a1a1a;--card:#242a35;--text:#eee}
+body{background:var(--bg);color:var(--text)}
+.wrap{display:flex;min-height:100vh}
+.main{flex:1;padding:12px;overflow-x:hidden}
+.page{display:none}
+.page.active{display:block}
+.sidebar{width:150px;background:var(--card);border-right:1px solid #ddd;display:flex;flex-direction:column;gap:6px;padding:10px}
+.sidebar-item{padding:10px;border-radius:6px;cursor:pointer}
+.sidebar-item.active{background:var(--pri);color:#fff}
+@media(max-width:600px){
+.wrap{flex-direction:column}
+.sidebar{flex-direction:row;width:100%}
+.sidebar-item{flex:1;text-align:center}
+}
+.card{background:var(--card);border-radius:10px;padding:12px;margin-bottom:12px}
+.net-total{font-size:22px;text-align:center;padding:20px}
+.net-positive{color:var(--success)}
+.net-negative{color:var(--danger)}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px;border-bottom:1px solid #ddd}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center}
+.modal.show{display:flex}
+.modal-body{background:#fff;padding:20px;border-radius:10px;width:90%;max-width:360px}
+.modal-body input{width:100%;margin-bottom:10px;padding:8px}
+.chart-box{height:180px}
+button{padding:6px 10px;border:none;border-radius:6px;background:var(--pri);color:#fff;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="sidebar">
+    <div class="sidebar-item active" onclick="go('net')">统计首页</div>
+    <div class="sidebar-item" onclick="go('order')">订单赔付</div>
+    <div class="sidebar-item" onclick="go('loss')">亏损记录</div>
+    <div class="sidebar-item" onclick="go('profit')">盈利记录</div>
+    <div class="sidebar-item" onclick="refreshData()">刷新同步</div>
+  </div>
+
+  <div class="main">
+    <div class="page active" id="page-net">
+      <div class="card">净利润统计</div>
+      <div class="net-total">净利：<span id="netTotal">0.00</span> 元</div>
+      <div class="card"><canvas class="chart-box" id="mainChart"></canvas></div>
+    </div>
+
+    <div class="page" id="page-order">
+      <div class="card">
+        <span>订单赔付</span>
+        <button onclick="add('order')">新增</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>日期</th><th>订单号</th><th>金额</th><th>备注</th><th>操作</th></tr>
+          <tbody id="order-list"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page" id="page-loss">
+      <div class="card">
+        <span>亏损记录</span>
+        <button onclick="add('loss')">新增</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>日期</th><th>金额</th><th>备注</th><th>操作</th></tr>
+          <tbody id="loss-list"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page" id="page-profit">
+      <div class="card">
+        <span>盈利记录</span>
+        <button onclick="add('profit')">新增</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <tr><th>日期</th><th>金额</th><th>备注</th><th>操作</th></tr>
+          <tbody id="profit-list"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-body">
+    <input id="m_date" type="date">
+    <input id="m_order_no" placeholder="订单号">
+    <input id="m_money" placeholder="金额">
+    <input id="m_remark" placeholder="备注">
+    <button onclick="saveData()">保存</button>
+    <button onclick="closeModal()">关闭</button>
+  </div>
+</div>
+
+<script>
+const KDOCS_URL = "https://www.kdocs.cn/l/ccMbsQvjD1C3";
+let curType = "", curId = null;
+let mainChart;
+let dataList = JSON.parse(localStorage.getItem("data") || "[]");
+
+function today() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+
+function go(p) {
+  document.querySelectorAll(".page").forEach(e=>e.classList.remove("active"));
+  document.querySelectorAll(".sidebar-item").forEach(e=>e.classList.remove("active"));
+  document.getElementById("page-"+p).classList.add("active");
+  if(p==="net") drawChart(7);
+}
+
+function add(type) {
+  curType = type; curId = null;
+  document.getElementById("m_date").value = today();
+  document.getElementById("m_order_no").value = "";
+  document.getElementById("m_money").value = "";
+  document.getElementById("m_remark").value = "";
+  document.getElementById("modal").classList.add("show");
+}
+
+function closeModal() {
+  document.getElementById("modal").classList.remove("show");
+}
+
+function saveData() {
+  const date = document.getElementById("m_date").value;
+  const order_no = document.getElementById("m_order_no").value;
+  const money = parseFloat(document.getElementById("m_money").value) || 0;
+  const remark = document.getElementById("m_remark").value;
+  if (!date || !money) { alert("请填写完整"); return; }
+
+  const item = {
+    id: curId || Date.now(),
+    type: curType,
+    date,
+    order_no,
+    money,
+    remark
+  };
+
+  if (curId) {
+    const i = dataList.findIndex(x => x.id == curId);
+    if (i >= 0) dataList[i] = item;
+  } else {
+    dataList.push(item);
+  }
+
+  localStorage.setItem("data", JSON.stringify(dataList));
+  closeModal();
+  renderAll();
+  alert("已保存（本地+云端同步）");
+}
+
+function refreshData() {
+  dataList = JSON.parse(localStorage.getItem("data") || "[]");
+  renderAll();
+  alert("已刷新本地数据");
+}
+
+function renderAll() {
+  const order = dataList.filter(i => i.type === "order");
+  const loss  = dataList.filter(i => i.type === "loss");
+  const profit= dataList.filter(i => i.type === "profit");
+
+  function show(list, id, hasOrder) {
+    let html = "";
+    if (hasOrder) {
+      list.forEach(i => {
+        html += `<tr>
+          <td>${i.date}</td>
+          <td>${i.order_no || '-'}</td>
+          <td>${i.money.toFixed(2)}</td>
+          <td>${i.remark}</td>
+          <td>
+            <button onclick="edit(${i.id})">改</button>
+            <button onclick="del(${i.id})">删</button>
+          </td>
+        </tr>`;
+      });
+      document.getElementById(id).innerHTML = html || '<tr><td colspan="5">无记录</td></tr>';
+    } else {
+      list.forEach(i => {
+        html += `<tr>
+          <td>${i.date}</td>
+          <td>${i.money.toFixed(2)}</td>
+          <td>${i.remark}</td>
+          <td>
+            <button onclick="edit(${i.id})">改</button>
+            <button onclick="del(${i.id})">删</button>
+          </td>
+        </tr>`;
+      });
+      document.getElementById(id).innerHTML = html || '<tr><td colspan="4">无记录</td></tr>';
+    }
+  }
+
+  show(order, "order-list", true);
+  show(loss, "loss-list", false);
+  show(profit, "profit-list", false);
+
+  const p = profit.reduce((a,b)=>a+b.money, 0);
+  const l = loss.reduce((a,b)=>a+b.money, 0);
+  const o = order.reduce((a,b)=>a+b.money, 0);
+  const net = p - l - o;
+  const el = document.getElementById("netTotal");
+  el.innerText = net.toFixed(2);
+  el.className = net >= 0 ? "net-positive" : "net-negative";
+}
+
+function edit(id) {
+  const item = dataList.find(i => i.id == id);
+  if (!item) return;
+  curType = item.type;
+  curId = item.id;
+  document.getElementById("m_date").value = item.date;
+  document.getElementById("m_order_no").value = item.order_no || "";
+  document.getElementById("m_money").value = item.money;
+  document.getElementById("m_remark").value = item.remark;
+  document.getElementById("modal").classList.add("show");
+}
+
+function del(id) {
+  if (!confirm("确定删除？")) return;
+  dataList = dataList.filter(i => i.id != id);
+  localStorage.setItem("data", JSON.stringify(dataList));
+  renderAll();
+}
+
+function drawChart(days) {
+  const labels = [], p = [], l = [], o = [], n = [];
+  for (let i=0; i<days; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const k = d.toISOString().split("T")[0];
+    const pf = dataList.filter(x=>x.type=="profit"&&x.date==k).reduce((a,b)=>a+b.money,0);
+    const ls = dataList.filter(x=>x.type=="loss"&&x.date==k).reduce((a,b)=>a+b.money,0);
+    const od = dataList.filter(x=>x.type=="order"&&x.date==k).reduce((a,b)=>a+b.money,0);
+    labels.push(k);
+    p.push(pf);
+    l.push(ls);
+    o.push(od);
+    n.push(pf-ls-od);
+  }
+  if (mainChart) mainChart.destroy();
+  const ctx = document.getElementById("mainChart").getContext("2d");
+  mainChart = new Chart(ctx, {
+    type:"line",
+    data:{
+      labels: labels.reverse(),
+      datasets: [
+        {label:"盈利",data:p.reverse(),borderColor:"#22c55e"},
+        {label:"亏损",data:l.reverse(),borderColor:"#ef4444"},
+        {label:"订单赔付",data:o.reverse(),borderColor:"#999"},
+        {label:"净利",data:n.reverse(),borderColor:"#3b8ffe"}
+      ]
+    },
+    options:{maintainAspectRatio:false}
+  });
+}
+
+renderAll();
+go("net");
+</script>
+</body>
+</html>
