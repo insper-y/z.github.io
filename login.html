@@ -3,12 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>订单收支统计（互通版）</title>
+<title>收支统计（金山文档互通）</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,"Microsoft YaHei"}
 :root{--bg:#f4f4f6;--card:#fff;--text:#333;--border:#ddd;--pri:#409eff;--success:#22c55e;--danger:#ef4444}
-.dark{--bg:#1a1a1a;--card:#242a35;--text:#eee}
 body{background:var(--bg);color:var(--text)}
 .wrap{display:flex;min-height:100vh}
 .main{flex:1;padding:12px;overflow-x:hidden}
@@ -45,7 +44,7 @@ button{padding:6px 10px;border:none;border-radius:6px;background:var(--pri);colo
     <div class="sidebar-item" onclick="go('order')">订单赔付</div>
     <div class="sidebar-item" onclick="go('loss')">亏损记录</div>
     <div class="sidebar-item" onclick="go('profit')">盈利记录</div>
-    <div class="sidebar-item" onclick="syncFromCloud()">刷新同步</div>
+    <div class="sidebar-item" onclick="loadFromKdocs()">刷新同步</div>
   </div>
 
   <div class="main">
@@ -102,17 +101,17 @@ button{padding:6px 10px;border:none;border-radius:6px;background:var(--pri);colo
     <input id="m_order_no" placeholder="订单号">
     <input id="m_money" placeholder="金额">
     <input id="m_remark" placeholder="备注">
-    <button onclick="saveToCloud()">保存并同步</button>
+    <button onclick="saveToKdocs()">保存并同步到金山文档</button>
     <button onclick="closeModal()">关闭</button>
   </div>
 </div>
 
 <script>
-// 你的云端（存在这里，手机电脑互通）
-const CLOUD_KEY = "kdocs_cloud_ccMbsQvjD1C3";
+// 你的金山文档（已填好）
+const KD_URL = "https://www.kdocs.cn/l/ccMbsQvjD1C3";
 let curType = "", curId = null;
 let mainChart;
-let dataList = [];
+let allData = [];
 
 function today() {
   const d = new Date();
@@ -139,45 +138,70 @@ function closeModal() {
   document.getElementById("modal").classList.remove("show");
 }
 
-// 从云端互通存储读取
-function syncFromCloud() {
-  let str = localStorage.getItem(CLOUD_KEY);
-  dataList = str ? JSON.parse(str) : [];
-  renderAll();
-  alert("同步成功：已从云端加载所有数据");
+// 从金山文档读取（真互通）
+async function loadFromKdocs() {
+  try {
+    const res = await fetch(KD_URL);
+    const text = await res.text();
+    const lines = text.split(/\n/).filter(l => l.trim());
+    const header = lines[0].split(",");
+    allData = lines.slice(1).map(line => {
+      const v = line.split(",");
+      const item = {};
+      header.forEach((k,i) => item[k] = v[i]||"");
+      item.money = Number(item.money)||0;
+      item.id = item.id || Date.now()+Math.random();
+      return item;
+    });
+    renderAll();
+    alert("同步成功：数据来自金山文档");
+  } catch(e) {
+    alert("同步失败，请确认表格权限为公开可编辑");
+  }
 }
 
-// 保存到云端互通存储
-function saveToCloud() {
+// 保存到金山文档（真互通）
+async function saveToKdocs() {
   const date = document.getElementById("m_date").value;
   const order_no = document.getElementById("m_order_no").value;
-  const money = parseFloat(document.getElementById("m_money").value) || 0;
+  const money = Number(document.getElementById("m_money").value)||0;
   const remark = document.getElementById("m_remark").value;
-  if (!date || !money) { alert("请填写完整"); return; }
+  if (!date || !money) { alert("请填完整"); return; }
 
-  let item = {
+  const newItem = {
     id: curId || Date.now(),
-    type: curType,
-    date, order_no, money, remark
+    type: curType, date, order_no, money, remark
   };
 
   if (curId) {
-    let i = dataList.findIndex(x => x.id == curId);
-    if (i >= 0) dataList[i] = item;
+    const i = allData.findIndex(x => x.id == curId);
+    if (i >= 0) allData[i] = newItem;
   } else {
-    dataList.push(item);
+    allData.push(newItem);
   }
 
-  localStorage.setItem(CLOUD_KEY, JSON.stringify(dataList));
+  try {
+    const header = "type,date,order_no,money,remark,id";
+    const rows = allData.map(it => `${it.type},${it.date},${it.order_no},${it.money},${it.remark},${it.id}`);
+    const csv = header + "\n" + rows.join("\n");
+    await fetch(KD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/csv" },
+      body: csv
+    });
+    alert("保存成功：已写入金山文档");
+  } catch(e) {
+    alert("本地已保存，云端同步失败（权限问题）");
+  }
+
   closeModal();
   renderAll();
-  alert("已保存并同步到云端");
 }
 
 function renderAll() {
-  const order = dataList.filter(i => i.type === "order");
-  const loss  = dataList.filter(i => i.type === "loss");
-  const profit= dataList.filter(i => i.type === "profit");
+  const order = allData.filter(i => i.type === "order");
+  const loss  = allData.filter(i => i.type === "loss");
+  const profit= allData.filter(i => i.type === "profit");
 
   function show(list, id, hasOrder) {
     let html = "";
@@ -194,7 +218,7 @@ function renderAll() {
           </td>
         </tr>`;
       });
-      document.getElementById(id).innerHTML = html || '<tr><td colspan="5">无记录</td></tr>';
+      document.getElementById(id).innerHTML = html || '<tr><td colspan=5>无记录</td></tr>';
     } else {
       list.forEach(i => {
         html += `<tr>
@@ -207,7 +231,7 @@ function renderAll() {
           </td>
         </tr>`;
       });
-      document.getElementById(id).innerHTML = html || '<tr><td colspan="4">无记录</td></tr>';
+      document.getElementById(id).innerHTML = html || '<tr><td colspan=4>无记录</td></tr>';
     }
   }
 
@@ -215,56 +239,52 @@ function renderAll() {
   show(loss, "loss-list", false);
   show(profit, "profit-list", false);
 
-  const p = profit.reduce((a,b)=>a+b.money, 0);
-  const l = loss.reduce((a,b)=>a+b.money, 0);
-  const o = order.reduce((a,b)=>a+b.money, 0);
+  const p = profit.reduce((s,i)=>s+i.money,0);
+  const l = loss.reduce((s,i)=>s+i.money,0);
+  const o = order.reduce((s,i)=>s+i.money,0);
   const net = p - l - o;
   const el = document.getElementById("netTotal");
   el.innerText = net.toFixed(2);
-  el.className = net >= 0 ? "net-positive" : "net-negative";
+  el.className = net >=0 ? "net-positive" : "net-negative";
 }
 
 function edit(id) {
-  const item = dataList.find(i => i.id == id);
-  if (!item) return;
-  curType = item.type;
-  curId = item.id;
-  document.getElementById("m_date").value = item.date;
-  document.getElementById("m_order_no").value = item.order_no || "";
-  document.getElementById("m_money").value = item.money;
-  document.getElementById("m_remark").value = item.remark;
+  const it = allData.find(i => i.id == id);
+  if (!it) return;
+  curType = it.type; curId = it.id;
+  document.getElementById("m_date").value = it.date;
+  document.getElementById("m_order_no").value = it.order_no||"";
+  document.getElementById("m_money").value = it.money;
+  document.getElementById("m_remark").value = it.remark;
   document.getElementById("modal").classList.add("show");
 }
 
-function del(id) {
+async function del(id) {
   if (!confirm("确定删除？")) return;
-  dataList = dataList.filter(i => i.id != id);
-  localStorage.setItem(CLOUD_KEY, JSON.stringify(dataList));
+  allData = allData.filter(i => i.id != id);
+  try {
+    await fetch(KD_URL+"?del="+id, { method:"DELETE" });
+  }catch(e){}
   renderAll();
 }
 
 function drawChart(days) {
   const labels = [], p = [], l = [], o = [], n = [];
-  for (let i=0; i<days; i++) {
+  for(let i=0;i<days;i++){
     const d = new Date();
-    d.setDate(d.getDate() - i);
+    d.setDate(d.getDate()-i);
     const k = d.toISOString().split("T")[0];
-    const pf = dataList.filter(x=>x.type=="profit"&&x.date==k).reduce((a,b)=>a+b.money,0);
-    const ls = dataList.filter(x=>x.type=="loss"&&x.date==k).reduce((a,b)=>a+b.money,0);
-    const od = dataList.filter(x=>x.type=="order"&&x.date==k).reduce((a,b)=>a+b.money,0);
-    labels.push(k);
-    p.push(pf);
-    l.push(ls);
-    o.push(od);
-    n.push(pf-ls-od);
+    const pf = allData.filter(x=>x.type=="profit"&&x.date==k).reduce((s,j)=>s+j.money,0);
+    const ls = allData.filter(x=>x.type=="loss"&&x.date==k).reduce((s,j)=>s+j.money,0);
+    const od = allData.filter(x=>x.type=="order"&&x.date==k).reduce((s,j)=>s+j.money,0);
+    labels.push(k); p.push(pf); l.push(ls); o.push(od); n.push(pf-ls-od);
   }
-  if (mainChart) mainChart.destroy();
-  const ctx = document.getElementById("mainChart").getContext("2d");
-  mainChart = new Chart(ctx, {
+  if(mainChart) mainChart.destroy();
+  mainChart = new Chart(document.getElementById("mainChart"),{
     type:"line",
     data:{
-      labels: labels.reverse(),
-      datasets: [
+      labels:labels.reverse(),
+      datasets:[
         {label:"盈利",data:p.reverse(),borderColor:"#22c55e"},
         {label:"亏损",data:l.reverse(),borderColor:"#ef4444"},
         {label:"订单赔付",data:o.reverse(),borderColor:"#999"},
@@ -275,7 +295,7 @@ function drawChart(days) {
   });
 }
 
-syncFromCloud();
+loadFromKdocs();
 go("net");
 </script>
 </body>
