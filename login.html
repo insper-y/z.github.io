@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>收支统计（腾讯文档互通版）</title>
+<title>收支统计（腾讯云互通版）</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://web.cloudbase.net/sdk/web/1.15.0/cloudbase.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,"Microsoft YaHei"}
 :root{--bg:#f4f6f8;--card:#fff;--text:#333;--pri:#409eff;--success:#22c55e;--danger:#ef4444}
@@ -44,12 +45,12 @@ button{padding:6px 12px;border:none;border-radius:6px;background:var(--pri);colo
     <div class="sidebar-item" onclick="go('order')">订单赔付</div>
     <div class="sidebar-item" onclick="go('loss')">亏损记录</div>
     <div class="sidebar-item" onclick="go('profit')">盈利记录</div>
-    <div class="sidebar-item" onclick="loadFromQQDocs()">刷新同步</div>
+    <div class="sidebar-item" onclick="loadFromCloud()">刷新同步</div>
   </div>
 
   <div class="main">
     <div class="page active" id="page-net">
-      <div class="card">净利润统计（腾讯文档互通）</div>
+      <div class="card">净利润统计（腾讯云互通）</div>
       <div class="net-total">净利：<span id="netTotal">0.00</span> 元</div>
       <div class="card"><canvas class="chart-box" id="mainChart"></canvas></div>
     </div>
@@ -101,25 +102,26 @@ button{padding:6px 12px;border:none;border-radius:6px;background:var(--pri);colo
     <input id="m_order_no" placeholder="订单号">
     <input id="m_money" placeholder="金额">
     <input id="m_remark" placeholder="备注">
-    <button onclick="saveToQQDocs()">保存并同步腾讯文档</button>
+    <button onclick="saveToCloud()">保存并同步云端</button>
     <button onclick="closeModal()">关闭</button>
   </div>
 </div>
 
 <script>
-// ==============================================
-// 把你自己的 腾讯文档链接 粘贴在这里
-// ==============================================
-const QQ_DOC_URL = "https://docs.qq.com/sheet/DSnR2cm9ITFFKSE5D";
+// 已经帮你填好你的环境ID
+const ENV_ID = "int-2gakseprf85edef0";
 
-let curType = "";
-let curId = null;
+const app = cloudbase.init({ env: ENV_ID });
+const db = app.database();
+const coll = db.collection("records");
+
+let curType = "", curId = null;
 let mainChart;
 let allData = [];
 
 function today() {
   const d = new Date();
-  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 }
 
 function go(p) {
@@ -142,97 +144,78 @@ function closeModal() {
   document.getElementById("modal").classList.remove("show");
 }
 
-// 读取腾讯文档
-async function loadFromQQDocs() {
+// 从腾讯云加载
+async function loadFromCloud() {
   try {
-    let res = await fetch(QQ_DOC_URL + "?output=csv");
-    let text = await res.text();
-    let lines = text.split(/\n/).filter(i=>i.trim());
-    let header = lines[0].split(",");
-    allData = lines.slice(1).map(line=>{
-      let v = line.split(",");
-      let o = {};
-      header.forEach((k,i)=>o[k]=v[i]||"");
-      o.money = Number(o.money)||0;
-      o.id = o.id || Date.now() + Math.random();
-      return o;
-    });
+    const res = await coll.get();
+    allData = res.data.map(item => ({
+      id: item._id,
+      type: item.type,
+      date: item.date,
+      order_no: item.order_no,
+      money: Number(item.money)||0,
+      remark: item.remark
+    }));
     renderAll();
-    alert("同步成功：数据来自腾讯文档");
+    alert("同步成功：数据来自云端");
   } catch(e) {
-    alert("同步失败，请检查文档权限为任何人可编辑");
+    alert("同步失败："+e.message);
   }
 }
 
-// 保存到腾讯文档
-async function saveToQQDocs() {
+// 保存到腾讯云
+async function saveToCloud() {
   let date = document.getElementById("m_date").value;
   let order_no = document.getElementById("m_order_no").value;
   let money = Number(document.getElementById("m_money").value)||0;
   let remark = document.getElementById("m_remark").value;
-  if (!date || !money) { alert("请填写完整"); return; }
-
-  let item = {
-    id: curId || Date.now(),
-    type: curType,
-    date, order_no, money, remark
-  };
-
-  if (curId) {
-    let i = allData.findIndex(x=>x.id==curId);
-    if(i>=0) allData[i] = item;
-  } else {
-    allData.push(item);
-  }
+  if (!date || !money) { alert("请填完整"); return; }
 
   try {
-    let header = "type,date,order_no,money,remark,id";
-    let rows = allData.map(it=>`${it.type},${it.date},${it.order_no},${it.money},${it.remark},${it.id}`);
-    let csv = header + "\n" + rows.join("\n");
-    await fetch(QQ_DOC_URL, {
-      method: "POST",
-      headers:{"Content-Type":"text/csv"},
-      body: csv
-    });
-    alert("保存成功：已写入腾讯文档");
+    const data = { type: curType, date, order_no, money, remark };
+    if (curId) {
+      await coll.doc(curId).update(data);
+    } else {
+      await coll.add(data);
+    }
+    alert("保存成功：已同步云端");
+    closeModal();
+    loadFromCloud();
   } catch(e) {
-    alert("本地已保存，云端同步成功（可正常互通）");
+    alert("保存失败："+e.message);
   }
-
-  closeModal();
-  renderAll();
 }
 
 function renderAll() {
-  let order = allData.filter(i=>i.type==="order");
-  let loss  = allData.filter(i=>i.type==="loss");
-  let profit= allData.filter(i=>i.type==="profit");
+  let order = allData.filter(i => i.type === "order");
+  let loss  = allData.filter(i => i.type === "loss");
+  let profit= allData.filter(i => i.type === "profit");
 
   function show(list, id, hasOrder) {
     let html = "";
     if (hasOrder) {
-      list.forEach(i=>{
+      list.forEach(i => {
         html+=`<tr>
           <td>${i.date}</td>
           <td>${i.order_no||'-'}</td>
           <td>${i.money.toFixed(2)}</td>
           <td>${i.remark}</td>
           <td>
-            <button onclick="edit(${i.id})">改</button>
-            <button onclick="del(${i.id})">删</button>
+            <button onclick="edit('${i.id}')">改</button>
+            <button onclick="del('${i.id}')">删</button>
           </td>
         </tr>`;
       });
       document.getElementById(id).innerHTML = html || '<tr><td colspan=5>无记录</td></tr>';
     } else {
-      list.forEach(i=>{
+      list.forEach(i => {
         html+=`<tr>
           <td>${i.date}</td>
           <td>${i.money.toFixed(2)}</td>
           <td>${i.remark}</td>
           <td>
-            <button onclick="edit(${i.id})">改</button>
-            <button onclick="del(${i.id})">删</button>
+            <button onclick="edit('${i.id}')">改</button>
+            <button onclick="del('${i.id}')">删</button>
           </td>
         </tr>`;
       });
@@ -254,9 +237,10 @@ function renderAll() {
 }
 
 function edit(id) {
-  let it = allData.find(i=>i.id==id);
-  if(!it)return;
-  curType = it.type; curId = it.id;
+  let it = allData.find(i => i.id == id);
+  if (!it) return;
+  curType = it.type;
+  curId = it.id;
   document.getElementById("m_date").value = it.date;
   document.getElementById("m_order_no").value = it.order_no||"";
   document.getElementById("m_money").value = it.money;
@@ -265,9 +249,13 @@ function edit(id) {
 }
 
 async function del(id) {
-  if(!confirm("确定删除？"))return;
-  allData = allData.filter(i=>i.id!=id);
-  renderAll();
+  if (!confirm("确定删除？")) return;
+  try {
+    await coll.doc(id).remove();
+    loadFromCloud();
+  } catch(e) {
+    alert("删除失败");
+  }
 }
 
 function drawChart(days) {
@@ -281,7 +269,7 @@ function drawChart(days) {
     let od = allData.filter(x=>x.type=="order"&&x.date==k).reduce((s,j)=>s+j.money,0);
     labels.push(k); p.push(pf); l.push(ls); o.push(od); n.push(pf-ls-od);
   }
-  if(mainChart)mainChart.destroy();
+  if(mainChart) mainChart.destroy();
   mainChart = new Chart(document.getElementById("mainChart"),{
     type:"line",
     data:{
@@ -297,7 +285,7 @@ function drawChart(days) {
   });
 }
 
-loadFromQQDocs();
+loadFromCloud();
 go("net");
 </script>
 </body>
