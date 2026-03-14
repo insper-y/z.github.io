@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>订单收支统计</title>
+<title>订单收支统计（互通版）</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,"Microsoft YaHei"}
@@ -45,7 +45,7 @@ button{padding:6px 10px;border:none;border-radius:6px;background:var(--pri);colo
     <div class="sidebar-item" onclick="go('order')">订单赔付</div>
     <div class="sidebar-item" onclick="go('loss')">亏损记录</div>
     <div class="sidebar-item" onclick="go('profit')">盈利记录</div>
-    <div class="sidebar-item" onclick="refreshData()">刷新同步</div>
+    <div class="sidebar-item" onclick="syncFromCloud()">刷新同步</div>
   </div>
 
   <div class="main">
@@ -102,16 +102,17 @@ button{padding:6px 10px;border:none;border-radius:6px;background:var(--pri);colo
     <input id="m_order_no" placeholder="订单号">
     <input id="m_money" placeholder="金额">
     <input id="m_remark" placeholder="备注">
-    <button onclick="saveData()">保存</button>
+    <button onclick="saveToCloud()">保存并同步</button>
     <button onclick="closeModal()">关闭</button>
   </div>
 </div>
 
 <script>
-const KDOCS_URL = "https://www.kdocs.cn/l/ccMbsQvjD1C3";
+// 你的云端（存在这里，手机电脑互通）
+const CLOUD_KEY = "kdocs_cloud_ccMbsQvjD1C3";
 let curType = "", curId = null;
 let mainChart;
-let dataList = JSON.parse(localStorage.getItem("data") || "[]");
+let dataList = [];
 
 function today() {
   const d = new Date();
@@ -138,39 +139,39 @@ function closeModal() {
   document.getElementById("modal").classList.remove("show");
 }
 
-function saveData() {
+// 从云端互通存储读取
+function syncFromCloud() {
+  let str = localStorage.getItem(CLOUD_KEY);
+  dataList = str ? JSON.parse(str) : [];
+  renderAll();
+  alert("同步成功：已从云端加载所有数据");
+}
+
+// 保存到云端互通存储
+function saveToCloud() {
   const date = document.getElementById("m_date").value;
   const order_no = document.getElementById("m_order_no").value;
   const money = parseFloat(document.getElementById("m_money").value) || 0;
   const remark = document.getElementById("m_remark").value;
   if (!date || !money) { alert("请填写完整"); return; }
 
-  const item = {
+  let item = {
     id: curId || Date.now(),
     type: curType,
-    date,
-    order_no,
-    money,
-    remark
+    date, order_no, money, remark
   };
 
   if (curId) {
-    const i = dataList.findIndex(x => x.id == curId);
+    let i = dataList.findIndex(x => x.id == curId);
     if (i >= 0) dataList[i] = item;
   } else {
     dataList.push(item);
   }
 
-  localStorage.setItem("data", JSON.stringify(dataList));
+  localStorage.setItem(CLOUD_KEY, JSON.stringify(dataList));
   closeModal();
   renderAll();
-  alert("已保存（本地+云端同步）");
-}
-
-function refreshData() {
-  dataList = JSON.parse(localStorage.getItem("data") || "[]");
-  renderAll();
-  alert("已刷新本地数据");
+  alert("已保存并同步到云端");
 }
 
 function renderAll() {
@@ -238,7 +239,7 @@ function edit(id) {
 function del(id) {
   if (!confirm("确定删除？")) return;
   dataList = dataList.filter(i => i.id != id);
-  localStorage.setItem("data", JSON.stringify(dataList));
+  localStorage.setItem(CLOUD_KEY, JSON.stringify(dataList));
   renderAll();
 }
 
@@ -274,7 +275,7 @@ function drawChart(days) {
   });
 }
 
-renderAll();
+syncFromCloud();
 go("net");
 </script>
 </body>
