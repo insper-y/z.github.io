@@ -108,14 +108,21 @@ button{padding:6px 12px;border:none;border-radius:6px;background:var(--pri);colo
 </div>
 
 <script>
-// 已经帮你填好你的环境ID
 const ENV_ID = "int-2gakseprf85edef0";
 
-const app = cloudbase.init({ env: ENV_ID });
-const db = app.database();
-const coll = db.collection("records");
+let app;
+let db;
+let coll;
 
-let curType = "", curId = null;
+// 先初始化云开发
+async function initCloudBase() {
+  app = cloudbase.init({ env: ENV_ID });
+  db = app.database();
+  coll = db.collection("records");
+}
+
+let curType = "";
+let curId = null;
 let mainChart;
 let allData = [];
 
@@ -144,7 +151,6 @@ function closeModal() {
   document.getElementById("modal").classList.remove("show");
 }
 
-// 从腾讯云加载
 async function loadFromCloud() {
   try {
     const res = await coll.get();
@@ -163,7 +169,6 @@ async function loadFromCloud() {
   }
 }
 
-// 保存到腾讯云
 async function saveToCloud() {
   let date = document.getElementById("m_date").value;
   let order_no = document.getElementById("m_order_no").value;
@@ -285,8 +290,12 @@ function drawChart(days) {
   });
 }
 
-loadFromCloud();
-go("net");
+// 页面一打开就先初始化，再加载数据
+(async () => {
+  await initCloudBase();
+  loadFromCloud();
+  go("net");
+})();
 </script>
 </body>
 </html>
