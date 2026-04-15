@@ -1,301 +1,137 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>收支统计（腾讯云互通版）</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://web.cloudbase.net/sdk/web/1.15.0/cloudbase.min.js"></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,"Microsoft YaHei"}
-:root{--bg:#f4f6f8;--card:#fff;--text:#333;--pri:#409eff;--success:#22c55e;--danger:#ef4444}
-body{background:var(--bg);color:var(--text)}
-.wrap{display:flex;min-height:100vh}
-.main{flex:1;padding:14px;overflow-x:hidden}
-.page{display:none}
-.page.active{display:block}
-.sidebar{width:150px;background:var(--card);display:flex;flex-direction:column;gap:6px;padding:10px}
-.sidebar-item{padding:10px;border-radius:6px;cursor:pointer}
-.sidebar-item.active{background:var(--pri);color:#fff}
-@media(max-width:600px){
-.wrap{flex-direction:column}
-.sidebar{flex-direction:row;width:100%}
-.sidebar-item{flex:1;text-align:center}
-}
-.card{background:var(--card);border-radius:10px;padding:12px;margin-bottom:12px}
-.net-total{font-size:22px;text-align:center;padding:20px}
-.net-positive{color:var(--success)}
-.net-negative{color:var(--danger)}
-.table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
-th,td{padding:10px;border-bottom:1px solid #eee}
-.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center}
-.modal.show{display:flex}
-.modal-body{background:#fff;padding:20px;border-radius:10px;width:90%;max-width:360px}
-.modal-body input{width:100%;margin-bottom:10px;padding:8px}
-.chart-box{height:180px}
-button{padding:6px 12px;border:none;border-radius:6px;background:var(--pri);color:#fff;cursor:pointer}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>李峋同款粉色爱心</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
 </head>
 <body>
+    <canvas id="heartCanvas"></canvas>
 
-<div class="wrap">
-  <div class="sidebar">
-    <div class="sidebar-item active" onclick="go('net')">统计首页</div>
-    <div class="sidebar-item" onclick="go('order')">订单赔付</div>
-    <div class="sidebar-item" onclick="go('loss')">亏损记录</div>
-    <div class="sidebar-item" onclick="go('profit')">盈利记录</div>
-    <div class="sidebar-item" onclick="loadFromCloud()">刷新同步</div>
-  </div>
+    <script>
+        const canvas = document.getElementById('heartCanvas');
+        const ctx = canvas.getContext('2d');
 
-  <div class="main">
-    <div class="page active" id="page-net">
-      <div class="card">净利润统计（腾讯云互通）</div>
-      <div class="net-total">净利：<span id="netTotal">0.00</span> 元</div>
-      <div class="card"><canvas class="chart-box" id="mainChart"></canvas></div>
-    </div>
+        // 自适应屏幕尺寸
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
 
-    <div class="page" id="page-order">
-      <div class="card">
-        <span>订单赔付</span>
-        <button onclick="add('order')">新增</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <tr><th>日期</th><th>订单号</th><th>金额</th><th>备注</th><th>操作</th></tr>
-          <tbody id="order-list"></tbody>
-        </table>
-      </div>
-    </div>
+        // 爱心参数方程（生成爱心轮廓）
+        function getHeartPoint(t, scale, centerX, centerY) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+            return {
+                x: x * scale + centerX,
+                y: -y * scale + centerY
+            };
+        }
 
-    <div class="page" id="page-loss">
-      <div class="card">
-        <span>亏损记录</span>
-        <button onclick="add('loss')">新增</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <tr><th>日期</th><th>金额</th><th>备注</th><th>操作</th></tr>
-          <tbody id="loss-list"></tbody>
-        </table>
-      </div>
-    </div>
+        // 小爱心粒子类
+        class HeartParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.baseX = x;
+                this.baseY = y;
+                this.size = Math.random() * 6 + 2; // 随机大小
+                this.opacity = Math.random() * 0.6 + 0.4; // 随机透明度
+                this.offset = Math.random() * Math.PI * 2; // 随机跳动相位
+            }
 
-    <div class="page" id="page-profit">
-      <div class="card">
-        <span>盈利记录</span>
-        <button onclick="add('profit')">新增</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <tr><th>日期</th><th>金额</th><th>备注</th><th>操作</th></tr>
-          <tbody id="profit-list"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
+            // 绘制小爱心
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = '#ff69b4'; // 粉色
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.size / 16, this.size / 16); // 缩放爱心
+                
+                // 绘制小爱心路径
+                ctx.beginPath();
+                for (let t = 0; t < Math.PI * 2; t += 0.1) {
+                    const p = getHeartPoint(t, 1, 0, 0);
+                    if (t === 0) ctx.moveTo(p.x, p.y);
+                    else ctx.lineTo(p.x, p.y);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
 
-<div class="modal" id="modal">
-  <div class="modal-body">
-    <input id="m_date" type="date">
-    <input id="m_order_no" placeholder="订单号">
-    <input id="m_money" placeholder="金额">
-    <input id="m_remark" placeholder="备注">
-    <button onclick="saveToCloud()">保存并同步云端</button>
-    <button onclick="closeModal()">关闭</button>
-  </div>
-</div>
+            // 更新位置（实现跳动效果）
+            update(time) {
+                // 呼吸式跳动，不同粒子相位错开，更自然
+                const beat = Math.sin(time * 3 + this.offset) * 0.05 + 1;
+                const dx = this.baseX - canvas.width / 2;
+                const dy = this.baseY - canvas.height / 2;
+                this.x = canvas.width / 2 + dx * beat;
+                this.y = canvas.height / 2 + dy * beat;
+            }
+        }
 
-<script>
-const ENV_ID = "int-2gakseprf85edef0";
+        let particles = [];
+        const scale = Math.min(canvas.width, canvas.height) / 35; // 爱心大小适配屏幕
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
 
-let app;
-let db;
-let coll;
+        // 初始化粒子（生成爱心轮廓）
+        function init() {
+            particles = [];
+            // 沿爱心轮廓生成粒子
+            for (let t = 0; t < Math.PI * 2; t += 0.02) {
+                const p = getHeartPoint(t, scale, centerX, centerY);
+                particles.push(new HeartParticle(p.x, p.y));
+            }
+        }
 
-// 先初始化云开发
-async function initCloudBase() {
-  app = cloudbase.init({ env: ENV_ID });
-  db = app.database();
-  coll = db.collection("records");
-}
+        // 动画循环
+        function animate() {
+            // 半透明黑底，实现拖尾/闪烁效果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-let curType = "";
-let curId = null;
-let mainChart;
-let allData = [];
+            const time = Date.now() / 1000;
+            // 更新并绘制所有粒子
+            for (let p of particles) {
+                p.update(time);
+                p.draw();
+            }
 
-function today() {
-  const d = new Date();
-  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-}
+            requestAnimationFrame(animate);
+        }
 
-function go(p) {
-  document.querySelectorAll(".page").forEach(e=>e.classList.remove("active"));
-  document.querySelectorAll(".sidebar-item").forEach(e=>e.classList.remove("active"));
-  document.getElementById("page-"+p).classList.add("active");
-  if(p==="net") drawChart(7);
-}
+        // 启动动画
+        init();
+        animate();
 
-function add(type) {
-  curType = type; curId = null;
-  document.getElementById("m_date").value = today();
-  document.getElementById("m_order_no").value = "";
-  document.getElementById("m_money").value = "";
-  document.getElementById("m_remark").value = "";
-  document.getElementById("modal").classList.add("show");
-}
-
-function closeModal() {
-  document.getElementById("modal").classList.remove("show");
-}
-
-async function loadFromCloud() {
-  try {
-    const res = await coll.get();
-    allData = res.data.map(item => ({
-      id: item._id,
-      type: item.type,
-      date: item.date,
-      order_no: item.order_no,
-      money: Number(item.money)||0,
-      remark: item.remark
-    }));
-    renderAll();
-    alert("同步成功：数据来自云端");
-  } catch(e) {
-    alert("同步失败："+e.message);
-  }
-}
-
-async function saveToCloud() {
-  let date = document.getElementById("m_date").value;
-  let order_no = document.getElementById("m_order_no").value;
-  let money = Number(document.getElementById("m_money").value)||0;
-  let remark = document.getElementById("m_remark").value;
-  if (!date || !money) { alert("请填完整"); return; }
-
-  try {
-    const data = { type: curType, date, order_no, money, remark };
-    if (curId) {
-      await coll.doc(curId).update(data);
-    } else {
-      await coll.add(data);
-    }
-    alert("保存成功：已同步云端");
-    closeModal();
-    loadFromCloud();
-  } catch(e) {
-    alert("保存失败："+e.message);
-  }
-}
-
-function renderAll() {
-  let order = allData.filter(i => i.type === "order");
-  let loss  = allData.filter(i => i.type === "loss");
-  let profit= allData.filter(i => i.type === "profit");
-
-  function show(list, id, hasOrder) {
-    let html = "";
-    if (hasOrder) {
-      list.forEach(i => {
-        html+=`<tr>
-          <td>${i.date}</td>
-          <td>${i.order_no||'-'}</td>
-          <td>${i.money.toFixed(2)}</td>
-          <td>${i.remark}</td>
-          <td>
-            <button onclick="edit('${i.id}')">改</button>
-            <button onclick="del('${i.id}')">删</button>
-          </td>
-        </tr>`;
-      });
-      document.getElementById(id).innerHTML = html || '<tr><td colspan=5>无记录</td></tr>';
-    } else {
-      list.forEach(i => {
-        html+=`<tr>
-          <td>${i.date}</td>
-          <td>${i.money.toFixed(2)}</td>
-          <td>${i.remark}</td>
-          <td>
-            <button onclick="edit('${i.id}')">改</button>
-            <button onclick="del('${i.id}')">删</button>
-          </td>
-        </tr>`;
-      });
-      document.getElementById(id).innerHTML = html || '<tr><td colspan=4>无记录</td></tr>';
-    }
-  }
-
-  show(order, "order-list", true);
-  show(loss, "loss-list", false);
-  show(profit, "profit-list", false);
-
-  let p = profit.reduce((s,i)=>s+i.money,0);
-  let l = loss.reduce((s,i)=>s+i.money,0);
-  let o = order.reduce((s,i)=>s+i.money,0);
-  let net = p - l - o;
-  let el = document.getElementById("netTotal");
-  el.innerText = net.toFixed(2);
-  el.className = net >=0 ? "net-positive" : "net-negative";
-}
-
-function edit(id) {
-  let it = allData.find(i => i.id == id);
-  if (!it) return;
-  curType = it.type;
-  curId = it.id;
-  document.getElementById("m_date").value = it.date;
-  document.getElementById("m_order_no").value = it.order_no||"";
-  document.getElementById("m_money").value = it.money;
-  document.getElementById("m_remark").value = it.remark;
-  document.getElementById("modal").classList.add("show");
-}
-
-async function del(id) {
-  if (!confirm("确定删除？")) return;
-  try {
-    await coll.doc(id).remove();
-    loadFromCloud();
-  } catch(e) {
-    alert("删除失败");
-  }
-}
-
-function drawChart(days) {
-  let labels = [], p=[],l=[],o=[],n=[];
-  for(let i=0;i<days;i++){
-    let d = new Date();
-    d.setDate(d.getDate()-i);
-    let k = d.toISOString().split("T")[0];
-    let pf = allData.filter(x=>x.type=="profit"&&x.date==k).reduce((s,j)=>s+j.money,0);
-    let ls = allData.filter(x=>x.type=="loss"&&x.date==k).reduce((s,j)=>s+j.money,0);
-    let od = allData.filter(x=>x.type=="order"&&x.date==k).reduce((s,j)=>s+j.money,0);
-    labels.push(k); p.push(pf); l.push(ls); o.push(od); n.push(pf-ls-od);
-  }
-  if(mainChart) mainChart.destroy();
-  mainChart = new Chart(document.getElementById("mainChart"),{
-    type:"line",
-    data:{
-      labels:labels.reverse(),
-      datasets:[
-        {label:"盈利",data:p.reverse(),borderColor:"#22c55e"},
-        {label:"亏损",data:l.reverse(),borderColor:"#ef4444"},
-        {label:"订单赔付",data:o.reverse(),borderColor:"#999"},
-        {label:"净利",data:n.reverse(),borderColor:"#409eff"}
-      ]
-    },
-    options:{maintainAspectRatio:false}
-  });
-}
-
-// 页面一打开就先初始化，再加载数据
-(async () => {
-  await initCloudBase();
-  loadFromCloud();
-  go("net");
-})();
-</script>
+        // 窗口大小变化时重新适配
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            init();
+        });
+    </script>
 </body>
 </html>
