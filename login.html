@@ -21,22 +21,106 @@
         }
         canvas {
             display: block;
+            display: none; /* 初始隐藏爱心 */
+        }
+        /* 密码弹窗样式 */
+        .password-box {
+            position: fixed;
+            width: 90%;
+            max-width: 400px;
+            padding: 40px 30px;
+            background: #111;
+            border: 2px solid #ff69b4;
+            border-radius: 16px;
+            text-align: center;
+            z-index: 999;
+        }
+        .password-box h2 {
+            color: #ff69b4;
+            margin-bottom: 25px;
+            font-size: 22px;
+        }
+        #pwdInput {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 18px;
+            border: 1px solid #ff69b4;
+            background: #000;
+            color: #fff;
+            border-radius: 8px;
+            outline: none;
+            margin-bottom: 20px;
+        }
+        #submitBtn {
+            width: 100%;
+            padding: 14px;
+            background: #ff69b4;
+            border: none;
+            color: #000;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #tipText {
+            margin-top: 15px;
+            color: #ff4444;
+            font-size: 14px;
+            display: none;
         }
     </style>
 </head>
 <body>
+    <!-- 密码弹窗 -->
+    <div class="password-box" id="pwdWrap">
+        <h2>请输入专属访问密码</h2>
+        <input type="password" id="pwdInput" placeholder="输入密码">
+        <button id="submitBtn">进入专属页面</button>
+        <div id="tipText">密码错误，请重新输入</div>
+    </div>
+
     <canvas id="heartCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('heartCanvas');
         const ctx = canvas.getContext('2d');
+        // 访问密码已修改为 890218
+        const truePassword = "890218";
+        
+        const pwdWrap = document.getElementById('pwdWrap');
+        const pwdInput = document.getElementById('pwdInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const tipText = document.getElementById('tipText');
+
+        // 密码校验逻辑
+        function checkPassword() {
+            const inputVal = pwdInput.value.trim();
+            if(inputVal === truePassword) {
+                // 密码正确，隐藏弹窗，显示爱心画布
+                pwdWrap.style.display = 'none';
+                canvas.style.display = 'block';
+                // 启动爱心动画
+                resizeCanvas();
+                init();
+                animate();
+            } else {
+                // 密码错误提示
+                tipText.style.display = 'block';
+                pwdInput.value = "";
+            }
+        }
+        // 点击按钮验证
+        submitBtn.addEventListener('click', checkPassword);
+        // 按回车键验证
+        pwdInput.addEventListener('keydown', e => {
+            if(e.key === 'Enter') checkPassword();
+        });
 
         // 自适应屏幕尺寸
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         }
-        resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
         // 爱心参数方程（生成爱心轮廓）
@@ -93,13 +177,14 @@
         }
 
         let particles = [];
-        const scale = Math.min(canvas.width, canvas.height) / 35; // 爱心大小适配屏幕
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+        let scale, centerX, centerY;
 
         // 初始化粒子（生成爱心轮廓）
         function init() {
             particles = [];
+            scale = Math.min(canvas.width, canvas.height) / 35; // 爱心大小适配屏幕
+            centerX = canvas.width / 2;
+            centerY = canvas.height / 2;
             // 沿爱心轮廓生成粒子
             for (let t = 0; t < Math.PI * 2; t += 0.02) {
                 const p = getHeartPoint(t, scale, centerX, centerY);
@@ -123,14 +208,10 @@
             requestAnimationFrame(animate);
         }
 
-        // 启动动画
-        init();
-        animate();
-
         // 窗口大小变化时重新适配
         window.addEventListener('resize', () => {
             resizeCanvas();
-            init();
+            if(canvas.style.display === 'block') init();
         });
     </script>
 </body>
