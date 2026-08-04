@@ -20,7 +20,6 @@
             justify-content: center;
         }
         canvas {
-            display: block;
             display: none; /* 初始隐藏爱心 */
         }
         /* 密码弹窗样式 */
@@ -84,18 +83,20 @@
     <script>
         const canvas = document.getElementById('heartCanvas');
         const ctx = canvas.getContext('2d');
-        // 访问密码已修改为 890218
-        const truePassword = "890218";
-        
         const pwdWrap = document.getElementById('pwdWrap');
         const pwdInput = document.getElementById('pwdInput');
         const submitBtn = document.getElementById('submitBtn');
         const tipText = document.getElementById('tipText');
 
+        function getRealPwd(){
+            const arr = [8,9,0,2,1,8];
+            return arr.join('');
+        }
+
         // 密码校验逻辑
         function checkPassword() {
             const inputVal = pwdInput.value.trim();
-            if(inputVal === truePassword) {
+            if(inputVal === getRealPwd()) {
                 // 密码正确，隐藏弹窗，显示爱心画布
                 pwdWrap.style.display = 'none';
                 canvas.style.display = 'block';
